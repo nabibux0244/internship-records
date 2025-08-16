@@ -9,8 +9,6 @@
   input, button { padding: 10px; margin: 5px 0; width: 100%; max-width: 400px; }
   .card { border: 1px solid #ccc; border-radius: 8px; padding: 15px; margin-bottom: 10px; }
 </style>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -23,70 +21,70 @@
 <div id="records"></div>
 
 <script>
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+let allRecords = [];
+
+document.getElementById('fileInput').addEventListener('change', handleFile);
+document.getElementById('searchBtn').addEventListener('click', searchRecords);
+window.addEventListener('load', fetchRecords);
+
+async function handleFile(e) {
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    const arrayBuffer = evt.target.result;
+
+    // Upload to Vercel Blob API
+    await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: arrayBuffer
+    });
+
+    fetchRecords();
   };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-  const recordsCol = db.collection('records');
+  reader.readAsArrayBuffer(file);
+}
 
-  let allRecords = [];
+async function fetchRecords() {
+  const res = await fetch('/api/upload', { method: 'GET' });
+  const files = await res.json();
+  const records = [];
 
-  document.getElementById('fileInput').addEventListener('change', handleFile);
-  document.getElementById('searchBtn').addEventListener('click', searchRecords);
-
-  function handleFile(e) {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = evt.target.result;
-      const workbook = XLSX.read(data, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(sheet);
-
-      jsonData.forEach(record => recordsCol.add(record));
-      fetchRecords();
-    };
-    reader.readAsBinaryString(file);
+  for (const f of files) {
+    const r = await fetch(f.url);
+    const arrayBuffer = await r.arrayBuffer();
+    const wb = XLSX.read(arrayBuffer, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    records.push(...XLSX.utils.sheet_to_json(sheet));
   }
 
-  function fetchRecords() {
-    recordsCol.get().then(snapshot => {
-      allRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      displayRecords(allRecords);
-    });
-  }
+  allRecords = records;
+  displayRecords(allRecords);
+}
 
-  function displayRecords(records) {
-    const container = document.getElementById('records');
-    container.innerHTML = '';
-    records.forEach(rec => {
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.innerHTML = `
-        <strong>${rec['Full Name'] || 'Candidate'}</strong><br>
-        Phone: ${rec['Phone'] || ''}<br>
-        Email: ${rec['Email'] || ''}<br>
-        Role: ${rec['Role'] || ''}
-      `;
-      container.appendChild(card);
-    });
-  }
+function displayRecords(records) {
+  const container = document.getElementById('records');
+  container.innerHTML = '';
+  records.forEach(rec => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <strong>${rec['Full Name'] || 'Candidate'}</strong><br>
+      Phone: ${rec['Phone'] || ''}<br>
+      Email: ${rec['Email'] || ''}<br>
+      Role: ${rec['Role'] || ''}
+    `;
+    container.appendChild(card);
+  });
+}
 
-  function searchRecords() {
-    const query = document.getElementById('searchInput').value.toLowerCase();
-    const filtered = allRecords.filter(rec =>
-      Object.values(rec).some(val => val?.toString().toLowerCase().includes(query))
-    );
-    displayRecords(filtered);
-  }
-
-  fetchRecords();
+function searchRecords() {
+  const query = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = allRecords.filter(rec =>
+    Object.values(rec).some(val => val?.toString().toLowerCase().includes(query))
+  );
+  displayRecords(filtered);
+}
 </script>
 
 </body>
